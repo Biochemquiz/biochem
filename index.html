@@ -202,40 +202,112 @@
 
         const NewsFeed = () => {
             const [posts, setPosts] = useState([]);
-            useEffect(() => {
-                Papa.parse(NEWS_SHEET_URL, { download: true, header: true, complete: (res) => { if(res.data) setPosts(res.data.filter(r => r.Headline)); } });
-            }, []);
-
+            const [selectedArticle, setSelectedArticle] = useState(null);
+            
             // New AI feature: Simplify Research
             const [expl, setExpl] = useState({});
             const [loadingId, setLoadingId] = useState(null);
 
+            useEffect(() => {
+                Papa.parse(NEWS_SHEET_URL, { 
+                    download: true, 
+                    header: true, 
+                    complete: (res) => { 
+                        if(res.data) setPosts(res.data.filter(r => r.Title)); 
+                    } 
+                });
+            }, []);
+
             const handleSimplify = async (article, idx) => {
                 setLoadingId(idx);
-                const res = await callGemini(`Simplify this research for a medical student:\nHeadline: ${article.Headline}\nSummary: ${article.Summary}`, "You are a helpful science communicator.");
+                // Using Title and checking Summary or Content
+                const contentText = article.Summary || article.Content;
+                const res = await callGemini(`Simplify this research for a medical student:\nHeadline: ${article.Title}\nSummary: ${contentText}`, "You are a helpful science communicator.");
                 setExpl(prev => ({...prev, [idx]: res}));
                 setLoadingId(null);
             };
 
+            const handleShare = (article) => {
+                const shareData = {
+                    title: article.Title,
+                    text: article.Summary,
+                    url: article.Link
+                };
+                if (navigator.share) {
+                    navigator.share(shareData).catch(err => console.log('Error sharing', err));
+                } else {
+                    navigator.clipboard.writeText(article.Link);
+                    alert("Link copied to clipboard!");
+                }
+            };
+
+            // ARTICLE DETAIL VIEW
+            if (selectedArticle) {
+                return (
+                    <div className="max-w-4xl mx-auto p-6 md:p-10">
+                        <button 
+                            onClick={() => setSelectedArticle(null)} 
+                            className="mb-6 flex items-center text-blue-600 hover:text-blue-800 font-bold text-sm"
+                        >
+                            ← Back to News Feed
+                        </button>
+                        
+                        <div className="bg-white p-8 rounded-lg shadow-sm border border-gray-200">
+                            <span className="text-xs font-bold text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded mb-4 inline-block">
+                                {selectedArticle.Category} • {selectedArticle.Source}
+                            </span>
+                            <h1 className="text-3xl md:text-4xl font-bold serif text-slate-900 mb-4 leading-tight">
+                                {selectedArticle.Title}
+                            </h1>
+                            <div className="text-sm text-slate-500 mb-8 border-b pb-4">
+                                Published: {selectedArticle.Date}
+                            </div>
+                            
+                            <div className="prose max-w-none text-slate-700 leading-relaxed mb-8 whitespace-pre-wrap font-sans text-lg">
+                                {/* Prefer Content, fallback to Summary */}
+                                {selectedArticle.Content || selectedArticle.Summary}
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t border-gray-100 mt-8">
+                                <a 
+                                    href={selectedArticle.Link} 
+                                    target="_blank" 
+                                    className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 text-center transition-colors flex-1"
+                                >
+                                    Read Full Article ↗
+                                </a>
+                                <button 
+                                    onClick={() => handleShare(selectedArticle)} 
+                                    className="bg-gray-100 text-slate-700 px-6 py-3 rounded-lg font-bold hover:bg-gray-200 text-center transition-colors flex-1"
+                                >
+                                    Share 🔗
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // LIST VIEW
             return (
                 <div className="max-w-3xl mx-auto">
                     <h1 className="text-3xl font-bold serif text-slate-800 mb-6 border-b pb-4">Recent Discoveries</h1>
                     <div className="ad-banner">Google Ad (Leaderboard)</div>
                     {posts.length === 0 ? <p className="text-slate-500 italic">Loading updates from Google Sheets...</p> : 
                         posts.map((p, i) => (
-                            <div key={i} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6 hover:shadow-md transition-shadow">
+                            <div key={i} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6 hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSelectedArticle(p)}>
                                 <div className="flex justify-between items-start mb-2">
-                                    <span className="text-xs font-bold text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded">{p.Source}</span>
+                                    <span className="text-xs font-bold text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded">{p.Category} • {p.Source}</span>
                                     <span className="text-xs text-slate-400">{p.Date}</span>
                                 </div>
-                                <h3 className="text-xl font-bold text-slate-900 mb-2 hover:text-blue-700"><a href={p.Link} target="_blank">{p.Headline}</a></h3>
-                                <p className="text-slate-600 leading-relaxed">{p.Summary}</p>
+                                <h3 className="text-xl font-bold text-slate-900 mb-2 hover:text-blue-700">{p.Title}</h3>
+                                <p className="text-slate-600 leading-relaxed line-clamp-3">{p.Summary}</p>
                                 
-                                {/* AI Button */}
-                                <div className="mt-4 pt-3 border-t border-gray-100">
+                                {/* AI Button (Stop propagation to prevent opening article when clicking AI) */}
+                                <div className="mt-4 pt-3 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
                                     {!expl[i] && !loadingId && (
                                         <button onClick={() => handleSimplify(p, i)} className="text-xs font-bold uppercase text-purple-600 hover:bg-purple-50 px-2 py-1 rounded transition-colors flex items-center gap-1">
-                                            ✨ Simplify Research
+                                            ✨ Simplify
                                         </button>
                                     )}
                                     {loadingId === i && <span className="text-xs text-purple-500 animate-pulse">Analyzing...</span>}
