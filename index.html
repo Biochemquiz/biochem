@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BioChemHub | Advanced Exam Prep</title>
+    <title>BioChemHub | Decentralized Learning</title>
     
     <!-- React & Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -11,11 +11,12 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- PapaParse & Katex -->
+    <!-- PapaParse, Katex, & Chart.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -24,7 +25,7 @@
         body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; color: #333; }
         h1, h2, h3, .serif { font-family: 'Merriweather', serif; }
         
-        /* Layout Grid: Left Sidebar | Main Content | Right Sidebar */
+        /* Layout Grid */
         .layout-grid { display: grid; grid-template-columns: 260px 1fr 280px; min-height: calc(100vh - 64px); }
         @media (max-width: 1280px) { .layout-grid { grid-template-columns: 240px 1fr; } .right-sidebar { display: none; } }
         @media (max-width: 768px) { .layout-grid { grid-template-columns: 1fr; } .left-sidebar { display: none; } }
@@ -55,10 +56,18 @@
         .tool-btn { width: 100%; background: #003366; color: white; padding: 10px; border-radius: 6px; font-weight: 600; margin-top: 12px; transition: background 0.2s; }
         .tool-btn:hover { background: #002244; }
         .tool-result { margin-top: 15px; padding: 15px; background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; border-radius: 6px; font-family: monospace; font-weight: bold; text-align: center; }
+        
+        /* Chart container */
+        .chart-container { position: relative; height: 300px; width: 100%; margin-top: 20px; }
 
         /* Ad Slots */
         .ad-box { background: #f3f4f6; border: 2px dashed #d1d5db; height: 250px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 0.75rem; margin-bottom: 20px; border-radius: 4px; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; }
         .ad-banner { height: 90px; width: 100%; background: #f3f4f6; border: 2px dashed #d1d5db; display: flex; align-items: center; justify-content: center; color: #9ca3af; margin-bottom: 30px; font-weight: bold; text-transform: uppercase; font-size: 0.75rem; }
+        
+        /* Markdown Style */
+        .ai-content p { margin-bottom: 0.5em; }
+        .ai-content ul { list-style-type: disc; margin-left: 1.5em; margin-bottom: 0.5em; }
+        .ai-content strong { color: #1e3a8a; }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
@@ -72,7 +81,8 @@
         //  CONFIGURATION & SYLLABUS
         // ==========================================================================================
         const NEWS_SHEET_URL = "https://docs.google.com/spreadsheets/d/15xY_MXcTDMJnkwjdphi7w2KpC3kHDh0rO2kS23BXouU/pub?output=csv";
-        const apiKey = ""; // API Key
+        const GOOGLE_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSfD3X8.../viewform?embedded=true";
+        const apiKey = ""; // API Key (Managed by User)
 
         // Decentralized Syllabus: Each topic can have a unique Sheet URL
         const SYLLABUS = [
@@ -98,13 +108,17 @@
 
         // --- GEMINI API ---
         async function callGemini(prompt, systemInstruction = "") {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            let key = apiKey;
+            if (!key) key = localStorage.getItem("biochem_api_key");
+            if (!key) return "⚠️ API Key missing. Please go to the 'AI Tutor' tab to enter your Google Gemini API Key.";
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${key}`;
             try {
                 const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: systemInstruction }] } }) });
                 if (!response.ok) throw new Error(`HTTP error!`);
                 const data = await response.json();
                 return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
-            } catch (e) { return "AI Tutor is currently unavailable. Please try again later."; }
+            } catch (e) { return "AI Tutor is currently unavailable. Please try again later or check your Key."; }
         }
 
         // ==========================================================================================
@@ -192,6 +206,17 @@
                 Papa.parse(NEWS_SHEET_URL, { download: true, header: true, complete: (res) => { if(res.data) setPosts(res.data.filter(r => r.Headline)); } });
             }, []);
 
+            // New AI feature: Simplify Research
+            const [expl, setExpl] = useState({});
+            const [loadingId, setLoadingId] = useState(null);
+
+            const handleSimplify = async (article, idx) => {
+                setLoadingId(idx);
+                const res = await callGemini(`Simplify this research for a medical student:\nHeadline: ${article.Headline}\nSummary: ${article.Summary}`, "You are a helpful science communicator.");
+                setExpl(prev => ({...prev, [idx]: res}));
+                setLoadingId(null);
+            };
+
             return (
                 <div className="max-w-3xl mx-auto">
                     <h1 className="text-3xl font-bold serif text-slate-800 mb-6 border-b pb-4">Recent Discoveries</h1>
@@ -205,6 +230,21 @@
                                 </div>
                                 <h3 className="text-xl font-bold text-slate-900 mb-2 hover:text-blue-700"><a href={p.Link} target="_blank">{p.Headline}</a></h3>
                                 <p className="text-slate-600 leading-relaxed">{p.Summary}</p>
+                                
+                                {/* AI Button */}
+                                <div className="mt-4 pt-3 border-t border-gray-100">
+                                    {!expl[i] && !loadingId && (
+                                        <button onClick={() => handleSimplify(p, i)} className="text-xs font-bold uppercase text-purple-600 hover:bg-purple-50 px-2 py-1 rounded transition-colors flex items-center gap-1">
+                                            ✨ Simplify Research
+                                        </button>
+                                    )}
+                                    {loadingId === i && <span className="text-xs text-purple-500 animate-pulse">Analyzing...</span>}
+                                    {expl[i] && (
+                                        <div className="bg-purple-50 p-3 rounded mt-2 text-sm text-purple-900 ai-content">
+                                            <strong>✨ AI Summary:</strong> {expl[i]}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         ))
                     }
@@ -216,12 +256,35 @@
             const [cat, setCat] = useState('core');
             const [inputs, setInputs] = useState({});
             const [res, setRes] = useState(null);
+            const [aiExplanation, setAiExplanation] = useState(null); // New state for AI theory
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
 
             const handleInput = (key, val) => setInputs(prev => ({...prev, [key]: val}));
 
+            // Clear AI explanation when category changes
+            useEffect(() => { setAiExplanation(null); setRes(null); setInputs({}); }, [cat]);
+
+            // Charting Effect
+            useEffect(() => {
+                if (cat === 'calib' && res && res.chartData && chartRef.current) {
+                    if (chartInstance.current) chartInstance.current.destroy();
+                    const ctx = chartRef.current.getContext('2d');
+                    chartInstance.current = new Chart(ctx, {
+                        type: 'scatter',
+                        data: {
+                            datasets: [{ label: 'Standard Points', data: res.chartData.points, backgroundColor: 'rgba(37, 99, 235, 1)', pointRadius: 6 },
+                                       { label: 'Regression Line', data: res.chartData.line, type: 'line', borderColor: 'rgba(220, 38, 38, 0.8)', borderWidth: 2, pointRadius: 0, fill: false }]
+                        },
+                        options: { scales: { x: { type: 'linear', position: 'bottom', title: {display: true, text: 'Concentration (X)'} }, y: { title: {display: true, text: 'Absorbance (Y)'} } } }
+                    });
+                }
+                return () => { if (chartInstance.current) chartInstance.current.destroy(); };
+            }, [res, cat]);
+
             const handleCalc = (type) => {
                 try {
-                    let result = "";
+                    let result = null;
                     if(type === 'core_sci') {
                         const base = parseFloat(inputs.base); const exp = parseFloat(inputs.exp);
                         result = `${base} × 10^${exp} = ${(base * Math.pow(10, exp)).toExponential(3)}`;
@@ -249,7 +312,7 @@
                     else if(type === 'stat') {
                         const arr = inputs.data.split(',').map(n => parseFloat(n.trim())).filter(n => !isNaN(n));
                         if(arr.length === 0) throw new Error("No valid numbers");
-                        const mean = arr.reduce((a,b)=>a+b)/arr.length;
+                        const mean = arr.reduce((a,b)=>a+b,0)/arr.length;
                         const sd = Math.sqrt(arr.map(x => Math.pow(x-mean,2)).reduce((a,b)=>a+b)/arr.length);
                         result = `Mean: ${mean.toFixed(2)} | SD: ${sd.toFixed(2)}`;
                     }
@@ -264,9 +327,47 @@
                         else if(inputs.utype === 'mM_uM') result = `${v*1000} µM`;
                         else result = "Select valid conversion";
                     }
+                    else if(type === 'calib_calc') {
+                        const x = inputs.calX.split(',').map(n => parseFloat(n.trim()));
+                        const y = inputs.calY.split(',').map(n => parseFloat(n.trim()));
+                        if(x.length !== y.length || x.length < 2) throw new Error("X and Y must have same length (min 2 points)");
+                        const n = x.length;
+                        const sumX = x.reduce((a,b)=>a+b,0);
+                        const sumY = y.reduce((a,b)=>a+b,0);
+                        const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
+                        const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
+                        const slope = (n*sumXY - sumX*sumY) / (n*sumX2 - sumX*sumX);
+                        const intercept = (sumY - slope*sumX) / n;
+                        const meanY = sumY/n;
+                        const ssTot = y.reduce((sum, yi) => sum + Math.pow(yi - meanY, 2), 0);
+                        const ssRes = y.reduce((sum, yi, i) => sum + Math.pow(yi - (slope*x[i] + intercept), 2), 0);
+                        const r2 = 1 - (ssRes/ssTot);
+                        const minX = Math.min(...x); const maxX = Math.max(...x);
+                        const linePoints = [{x: minX, y: slope*minX + intercept}, {x: maxX, y: slope*maxX + intercept}];
+                        const scatterPoints = x.map((xi, i) => ({x: xi, y: y[i]}));
+                        result = { text: `y = ${slope.toFixed(4)}x + ${intercept.toFixed(4)} | R² = ${r2.toFixed(4)}`, chartData: { points: scatterPoints, line: linePoints } };
+                    }
+                    else if(type === 'check_plausible') {
+                        const val = parseFloat(inputs.checkVal);
+                        const pType = inputs.checkType;
+                        let verdict = "Seems plausible.";
+                        let color = "text-green-700";
+                        if(pType === 'ph' && (val < 0 || val > 14)) { verdict = "⚠️ Suspicious: pH is typically 0-14."; color = "text-red-600"; }
+                        if(pType === 'temp' && val > 100) { verdict = "⚠️ Warning: Most enzymes denature > 60°C. Water boils at 100°C."; color = "text-orange-600"; }
+                        if(pType === 'conc' && val > 55) { verdict = "⚠️ Impossible: Pure water is ~55.5M. Higher molarity is unlikely."; color = "text-red-600"; }
+                        result = <span className={color}>{verdict}</span>;
+                    }
                     setRes(result);
                 } catch(e) { setRes("Error: " + e.message); }
             };
+
+            const handleExplainTheory = async (toolName) => {
+                if(aiExplanation === "Thinking...") return;
+                setAiExplanation("Thinking...");
+                const prompt = `Explain the biochemical theory and lab application of: ${toolName}. Be concise and practical for a student.`;
+                const res = await callGemini(prompt, "You are a senior lab technician teaching a student.");
+                setAiExplanation(res);
+            }
 
             const cats = [
                 {id:'core', l:'1. Core Math'}, {id:'dil', l:'2. Dilution'}, {id:'ph', l:'3. pH/Buffer'},
@@ -274,6 +375,125 @@
                 {id:'mol', l:'7. Molecular Prop'}, {id:'calib', l:'8. Calibration'}, {id:'unit', l:'9. Unit Conv'},
                 {id:'check', l:'10. Sanity Checks'}
             ];
+
+            const renderToolContent = () => {
+                // Wrapper to add the AI Explain button to every tool
+                let content = null;
+                let toolName = "";
+
+                if (cat === 'core') {
+                    toolName = "Scientific Notation";
+                    content = <div className="space-y-4">
+                        <div><label className="tool-label">Base Number</label><input type="number" className="tool-input" placeholder="e.g. 6.02" onChange={e=>handleInput('base', e.target.value)}/></div>
+                        <div><label className="tool-label">Exponent</label><input type="number" className="tool-input" placeholder="e.g. 23" onChange={e=>handleInput('exp', e.target.value)}/></div>
+                        <button className="tool-btn" onClick={()=>handleCalc('core_sci')}>Calculate</button>
+                    </div>;
+                } else if (cat === 'dil') {
+                    toolName = "Dilution Formula";
+                    content = <div className="space-y-4">
+                        <div><label className="tool-label">Stock Concentration (C1)</label><input type="number" className="tool-input" onChange={e=>handleInput('c1', e.target.value)}/></div>
+                        <div><label className="tool-label">Volume Used (V1)</label><input type="number" className="tool-input" onChange={e=>handleInput('v1', e.target.value)}/></div>
+                        <div><label className="tool-label">Target Concentration (C2)</label><input type="number" className="tool-input" onChange={e=>handleInput('c2', e.target.value)}/></div>
+                        <button className="tool-btn" onClick={()=>handleCalc('dil')}>Calculate Final Vol (V2)</button>
+                    </div>;
+                } else if (cat === 'ph') {
+                    toolName = "pH and Henderson-Hasselbalch";
+                    content = <div className="space-y-4">
+                        <div><label className="tool-label">[H+] Concentration (M)</label><input type="number" step="any" className="tool-input" onChange={e=>handleInput('h', e.target.value)}/></div>
+                        <button className="tool-btn" onClick={()=>handleCalc('ph')}>Calculate pH</button>
+                    </div>;
+                } else if (cat === 'prot') {
+                    toolName = "Beer-Lambert Law";
+                    content = <div className="space-y-4">
+                        <div><label className="tool-label">Absorbance (A)</label><input type="number" className="tool-input" onChange={e=>handleInput('a', e.target.value)}/></div>
+                        <div><label className="tool-label">Extinction Coeff (ε)</label><input type="number" className="tool-input" onChange={e=>handleInput('e', e.target.value)}/></div>
+                        <div><label className="tool-label">Path Length (l) cm</label><input type="number" className="tool-input" defaultValue="1" onChange={e=>handleInput('l', e.target.value)}/></div>
+                        <button className="tool-btn" onClick={()=>handleCalc('beer')}>Calculate Concentration</button>
+                    </div>;
+                } else if (cat === 'enz') {
+                    toolName = "Enzyme Reaction Rate";
+                    content = <div className="space-y-4">
+                        <div><label className="tool-label">Change in Absorbance (ΔA)</label><input type="number" className="tool-input" onChange={e=>handleInput('da', e.target.value)}/></div>
+                        <div><label className="tool-label">Time Interval (Δt) min</label><input type="number" className="tool-input" onChange={e=>handleInput('dt', e.target.value)}/></div>
+                        <button className="tool-btn" onClick={()=>handleCalc('enz_rate')}>Calculate Rate</button>
+                    </div>;
+                } else if (cat === 'stat') {
+                    toolName = "Basic Statistics (Mean, SD)";
+                    content = <div className="space-y-4">
+                        <div><label className="tool-label">Data Set (comma separated)</label><input type="text" className="tool-input" placeholder="1.2, 1.5, 1.3" onChange={e=>handleInput('data', e.target.value)}/></div>
+                        <button className="tool-btn" onClick={()=>handleCalc('stat')}>Calculate Mean & SD</button>
+                    </div>;
+                } else if (cat === 'mol') {
+                    toolName = "Molecular Weight Calculation";
+                    content = <div className="space-y-4">
+                        <div><label className="tool-label">Mass (g)</label><input type="number" className="tool-input" onChange={e=>handleInput('mass', e.target.value)}/></div>
+                        <div><label className="tool-label">Molecular Weight (g/mol)</label><input type="number" className="tool-input" onChange={e=>handleInput('mw', e.target.value)}/></div>
+                        <button className="tool-btn" onClick={()=>handleCalc('mol')}>Calculate Moles</button>
+                    </div>;
+                } else if (cat === 'unit') {
+                    toolName = "Unit Conversion";
+                    content = <div className="space-y-4">
+                        <div><label className="tool-label">Value</label><input type="number" className="tool-input" onChange={e=>handleInput('val', e.target.value)}/></div>
+                        <div><label className="tool-label">Conversion</label>
+                            <select className="tool-input" onChange={e=>handleInput('utype', e.target.value)}>
+                                <option value="uM_mM">µM -> mM</option>
+                                <option value="mM_uM">mM -> µM</option>
+                            </select>
+                        </div>
+                        <button className="tool-btn" onClick={()=>handleCalc('unit')}>Convert</button>
+                    </div>;
+                } else if (cat === 'calib') {
+                    toolName = "Standard Curve Linear Regression";
+                    content = <div className="space-y-4">
+                        <div><label className="tool-label">X Values (Conc) - Comma Separated</label><input type="text" className="tool-input" placeholder="0, 10, 20, 30" onChange={e=>handleInput('calX', e.target.value)}/></div>
+                        <div><label className="tool-label">Y Values (Abs) - Comma Separated</label><input type="text" className="tool-input" placeholder="0.05, 0.15, 0.25, 0.35" onChange={e=>handleInput('calY', e.target.value)}/></div>
+                        <button className="tool-btn" onClick={()=>handleCalc('calib_calc')}>Plot & Calculate</button>
+                    </div>;
+                } else if (cat === 'check') {
+                    toolName = "Biological Validity Checks";
+                    content = <div className="space-y-4">
+                        <div><label className="tool-label">Value to Check</label><input type="number" className="tool-input" onChange={e=>handleInput('checkVal', e.target.value)}/></div>
+                        <div><label className="tool-label">Type</label>
+                            <select className="tool-input" onChange={e=>handleInput('checkType', e.target.value)}>
+                                <option value="ph">pH</option>
+                                <option value="temp">Temperature (°C)</option>
+                                <option value="conc">Concentration (M)</option>
+                            </select>
+                        </div>
+                        <button className="tool-btn" onClick={()=>handleCalc('check_plausible')}>Validate</button>
+                    </div>;
+                }
+
+                return (
+                    <div className="tool-card">
+                        <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
+                            <h3 className="tool-title text-lg font-bold mb-0 border-none">{toolName}</h3>
+                            <button 
+                                onClick={() => handleExplainTheory(toolName)} 
+                                className="text-xs font-bold uppercase text-purple-600 hover:bg-purple-50 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                            >
+                                ✨ Explain Principle
+                            </button>
+                        </div>
+                        
+                        {content}
+                        
+                        {aiExplanation && (
+                            <div className="mt-4 p-3 bg-purple-50 text-purple-900 text-sm rounded border border-purple-100 ai-content">
+                                <strong>✨ AI Theory Insight:</strong>
+                                <div className="mt-1 whitespace-pre-wrap">{aiExplanation}</div>
+                            </div>
+                        )}
+                        
+                        {res && (
+                            <div>
+                                <div className="tool-result">{typeof res === 'object' && res.text ? res.text : res}</div>
+                                {cat === 'calib' && <div className="chart-container"><canvas ref={chartRef}></canvas></div>}
+                            </div>
+                        )}
+                    </div>
+                );
+            };
 
             return (
                 <div className="max-w-4xl mx-auto">
@@ -290,66 +510,7 @@
                         </div>
 
                         <div className="flex-1">
-                            {cat === 'core' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">Scientific Notation</h3><div className="space-y-4">
-                                <div><label className="tool-label">Base Number</label><input type="number" className="tool-input" placeholder="e.g. 6.02" onChange={e=>handleInput('base', e.target.value)}/></div>
-                                <div><label className="tool-label">Exponent</label><input type="number" className="tool-input" placeholder="e.g. 23" onChange={e=>handleInput('exp', e.target.value)}/></div>
-                                <button className="tool-btn" onClick={()=>handleCalc('core_sci')}>Calculate</button>
-                            </div></div>}
-
-                            {cat === 'dil' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">Dilution (C1V1 = C2V2)</h3><div className="space-y-4">
-                                <div><label className="tool-label">Stock Concentration (C1)</label><input type="number" className="tool-input" onChange={e=>handleInput('c1', e.target.value)}/></div>
-                                <div><label className="tool-label">Volume Used (V1)</label><input type="number" className="tool-input" onChange={e=>handleInput('v1', e.target.value)}/></div>
-                                <div><label className="tool-label">Target Concentration (C2)</label><input type="number" className="tool-input" onChange={e=>handleInput('c2', e.target.value)}/></div>
-                                <button className="tool-btn" onClick={()=>handleCalc('dil')}>Calculate Final Vol (V2)</button>
-                            </div></div>}
-
-                            {cat === 'ph' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">pH Calculator</h3><div className="space-y-4">
-                                <div><label className="tool-label">[H+] Concentration (M)</label><input type="number" step="any" className="tool-input" onChange={e=>handleInput('h', e.target.value)}/></div>
-                                <button className="tool-btn" onClick={()=>handleCalc('ph')}>Calculate pH</button>
-                            </div></div>}
-
-                            {cat === 'prot' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">Beer-Lambert Law (A = εcl)</h3><div className="space-y-4">
-                                <div><label className="tool-label">Absorbance (A)</label><input type="number" className="tool-input" onChange={e=>handleInput('a', e.target.value)}/></div>
-                                <div><label className="tool-label">Extinction Coeff (ε)</label><input type="number" className="tool-input" onChange={e=>handleInput('e', e.target.value)}/></div>
-                                <div><label className="tool-label">Path Length (l) cm</label><input type="number" className="tool-input" defaultValue="1" onChange={e=>handleInput('l', e.target.value)}/></div>
-                                <button className="tool-btn" onClick={()=>handleCalc('beer')}>Calculate Concentration</button>
-                            </div></div>}
-
-                            {cat === 'enz' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">Simple Reaction Rate</h3><div className="space-y-4">
-                                <div><label className="tool-label">Change in Absorbance (ΔA)</label><input type="number" className="tool-input" onChange={e=>handleInput('da', e.target.value)}/></div>
-                                <div><label className="tool-label">Time Interval (Δt) min</label><input type="number" className="tool-input" onChange={e=>handleInput('dt', e.target.value)}/></div>
-                                <button className="tool-btn" onClick={()=>handleCalc('enz_rate')}>Calculate Rate</button>
-                            </div></div>}
-
-                            {cat === 'stat' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">Basic Statistics</h3><div className="space-y-4">
-                                <div><label className="tool-label">Data Set (comma separated)</label><input type="text" className="tool-input" placeholder="1.2, 1.5, 1.3" onChange={e=>handleInput('data', e.target.value)}/></div>
-                                <button className="tool-btn" onClick={()=>handleCalc('stat')}>Calculate Mean & SD</button>
-                            </div></div>}
-
-                            {cat === 'mol' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">Mass to Moles</h3><div className="space-y-4">
-                                <div><label className="tool-label">Mass (g)</label><input type="number" className="tool-input" onChange={e=>handleInput('mass', e.target.value)}/></div>
-                                <div><label className="tool-label">Molecular Weight (g/mol)</label><input type="number" className="tool-input" onChange={e=>handleInput('mw', e.target.value)}/></div>
-                                <button className="tool-btn" onClick={()=>handleCalc('mol')}>Calculate Moles</button>
-                            </div></div>}
-
-                            {cat === 'unit' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">Unit Converter</h3><div className="space-y-4">
-                                <div><label className="tool-label">Value</label><input type="number" className="tool-input" onChange={e=>handleInput('val', e.target.value)}/></div>
-                                <div><label className="tool-label">Conversion</label>
-                                    <select className="tool-input" onChange={e=>handleInput('utype', e.target.value)}>
-                                        <option value="uM_mM">µM -> mM</option>
-                                        <option value="mM_uM">mM -> µM</option>
-                                    </select>
-                                </div>
-                                <button className="tool-btn" onClick={()=>handleCalc('unit')}>Convert</button>
-                            </div></div>}
-
-                            {/* Fallback/Text Sections */}
-                            {['calib', 'check'].includes(cat) && <div className="bg-blue-50 p-6 rounded text-slate-700 border border-blue-100">
-                                <h3 className="font-bold mb-2">Information</h3>
-                                <p>Standard Curve/Calibration logic typically requires plotting software. Use Excel/GraphPad for regression analysis.</p>
-                            </div>}
-
-                            {res && <div className="tool-result">{res}</div>}
+                            {renderToolContent()}
                         </div>
                     </div>
                 </div>
@@ -376,7 +537,17 @@
                     download: true, header: true,
                     complete: (res) => {
                         setLoading(false);
-                        if(res.data) setQuestions(res.data.filter(r => r.Question));
+                        if(res.data) {
+                            let validQs = res.data.filter(r => r.Question);
+                            
+                            // SHUFFLE ALGORITHM (Fisher-Yates)
+                            for (let i = validQs.length - 1; i > 0; i--) {
+                                const j = Math.floor(Math.random() * (i + 1));
+                                [validQs[i], validQs[j]] = [validQs[j], validQs[i]];
+                            }
+                            
+                            setQuestions(validQs);
+                        }
                     },
                     error: (err) => {
                         console.log("Error loading sheet:", err);
@@ -435,11 +606,32 @@
             const [selected, setSelected] = useState(null);
             const [showExpl, setShowExpl] = useState(false);
             const [aiExpl, setAiExpl] = useState(null);
+            const [generatedQ, setGeneratedQ] = useState(null);
+            const [generating, setGenerating] = useState(false);
+            const [clinical, setClinical] = useState(null);
+            const [loadingClinical, setLoadingClinical] = useState(false);
 
             const askAI = async () => {
                 setAiExpl("Thinking...");
                 const ans = await callGemini(`Explain this biochemistry question: ${q.Question}. Answer is ${q.CorrectAnswer}.`, "Be concise.");
                 setAiExpl(ans);
+            };
+
+            const generateSimilar = async () => {
+                setGenerating(true);
+                const prompt = `Generate a multiple-choice question similar to this one: '${q.Question}'. Include 4 options and the correct answer. Format the response exactly like this:\nQuestion: [Question Text]\nA) [Option 1]\nB) [Option 2]\nC) [Option 3]\nD) [Option 4]\nCorrect: [Correct Option Letter]\nExplanation: [Brief Explanation]`;
+                const ans = await callGemini(prompt, "You are a biochemistry professor creating exam questions.");
+                setGeneratedQ(ans);
+                setGenerating(false);
+            };
+
+            const getClinicalLink = async () => {
+                if(loadingClinical) return;
+                setLoadingClinical(true);
+                const prompt = `Connect this biochemistry concept to a clinical scenario or disease state: "${q.Question}". Correct Answer: "${q.CorrectAnswer}". Keep it short and relevant to medical practice.`;
+                const res = await callGemini(prompt, "You are a medical doctor teaching biochemistry.");
+                setClinical(res);
+                setLoadingClinical(false);
             };
 
             return (
@@ -465,10 +657,28 @@
                     {showExpl && (
                         <div className="mt-4 ml-8 p-4 bg-blue-50 text-blue-900 text-sm rounded border border-blue-100">
                             <strong>Explanation:</strong> {q.Explanation}
-                            <div className="mt-3 pt-3 border-t border-blue-200">
+                            
+                            <div className="mt-3 pt-3 border-t border-blue-200 flex flex-wrap gap-2">
                                 <button onClick={askAI} className="text-xs font-bold uppercase text-blue-600 hover:underline flex items-center gap-1">✨ Ask AI Tutor</button>
-                                {aiExpl && <div className="mt-2 text-slate-700 italic bg-white p-3 rounded">{aiExpl}</div>}
+                                <button onClick={generateSimilar} className="text-xs font-bold uppercase text-green-600 hover:underline flex items-center gap-1">✨ Generate Similar</button>
+                                <button onClick={getClinicalLink} className="text-xs font-bold uppercase text-red-600 hover:underline flex items-center gap-1">✨ Clinical Context</button>
                             </div>
+
+                            {aiExpl && <div className="mt-2 text-slate-700 italic bg-white p-3 rounded ai-content">{aiExpl}</div>}
+                            {generating && <div className="mt-2 text-slate-500 text-xs animate-pulse">Generating new question...</div>}
+                            {generatedQ && (
+                                <div className="mt-3 bg-green-50 p-3 rounded border border-green-200 ai-content text-slate-800 text-sm whitespace-pre-wrap">
+                                    <strong className="text-green-800 block mb-1">New Practice Question:</strong>
+                                    {generatedQ}
+                                </div>
+                            )}
+                            {loadingClinical && <div className="mt-2 text-slate-500 text-xs animate-pulse">Finding clinical link...</div>}
+                            {clinical && (
+                                <div className="mt-3 bg-red-50 p-3 rounded border border-red-200 ai-content text-slate-800 text-sm">
+                                    <strong className="text-red-800 block mb-1">🏥 Clinical Relevance:</strong>
+                                    {clinical}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -495,12 +705,86 @@
         const FeedbackPage = () => (
             <div className="bg-white p-8 rounded shadow-sm border border-gray-200 max-w-2xl mx-auto">
                 <h2 className="text-3xl font-bold serif text-[#003366] mb-4">Feedback</h2>
-                <p className="text-slate-500 mb-6">Found a bug or have a suggestion? Let us know.</p>
-                <input className="w-full border p-3 rounded mb-4 tool-input" placeholder="Your Email (Optional)" />
-                <textarea className="w-full border p-3 rounded h-32 mb-4 tool-input" placeholder="Tell us what you think..."></textarea>
-                <button className="bg-[#003366] text-white px-6 py-2 rounded font-bold hover:bg-[#002244]">Submit Feedback</button>
+                <p className="text-slate-500 mb-6">We value your input! Please fill out the form below to help us improve.</p>
+                
+                {/* Embed Google Form via Iframe */}
+                <div className="w-full bg-slate-50 border border-slate-200 rounded-lg overflow-hidden h-[600px]">
+                    <iframe 
+                        src={GOOGLE_FORM_URL} 
+                        width="100%" 
+                        height="100%" 
+                        frameBorder="0" 
+                        marginHeight="0" 
+                        marginWidth="0">
+                        Loading form...
+                    </iframe>
+                </div>
+                
+                <p className="text-xs text-slate-400 mt-4 text-center">Form not loading? <a href={GOOGLE_FORM_URL} target="_blank" className="underline text-blue-600">Click here to open in new tab.</a></p>
             </div>
         );
+
+        const AITutor = () => {
+            const [key, setKey] = useState(apiKey || localStorage.getItem("biochem_api_key") || "");
+            const [messages, setMessages] = useState([{ role: 'system', text: "Hello! I am your AI Biochemistry Professor. Ask me anything!" }]);
+            const [input, setInput] = useState("");
+            const [loading, setLoading] = useState(false);
+            const scrollRef = useRef(null);
+
+            useEffect(() => { if(scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
+
+            const saveKey = (val) => {
+                setKey(val);
+                localStorage.setItem("biochem_api_key", val);
+            };
+
+            const handleSend = async () => {
+                if (!input.trim() || loading) return;
+                const userMsg = input; setInput("");
+                setMessages(prev => [...prev, { role: 'user', text: userMsg }]); setLoading(true);
+                const response = await callGemini(`Student Question: ${userMsg}`, "You are an expert Biochemistry Professor.");
+                setMessages(prev => [...prev, { role: 'system', text: response }]); setLoading(false);
+            };
+
+            if (!key) {
+                return (
+                    <div className="flex flex-col h-full max-w-4xl mx-auto bg-white border-x border-slate-200 shadow-sm items-center justify-center p-8 text-center">
+                        <div className="mb-4 text-4xl">🔑</div>
+                        <h2 className="text-xl font-bold text-slate-800 mb-2">AI Tutor Setup</h2>
+                        <p className="text-slate-600 mb-6">To use the AI Tutor and Deep Dive features, please enter a free Google Gemini API Key.</p>
+                        <input 
+                            type="password" 
+                            placeholder="Paste API Key here" 
+                            className="border p-3 rounded w-full max-w-md mb-4 tool-input"
+                            onBlur={(e) => saveKey(e.target.value)}
+                        />
+                        <p className="text-xs text-slate-400">Your key is saved locally in your browser.</p>
+                        <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-blue-600 text-sm mt-4 hover:underline font-bold">Get a free key here &rarr;</a>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="flex flex-col h-full max-w-4xl mx-auto bg-white border-x border-slate-200 shadow-sm">
+                    <div className="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center">
+                        <h2 className="text-xl font-bold text-slate-800 serif">✨ AI Bio-Tutor</h2>
+                        <button onClick={() => {localStorage.removeItem("biochem_api_key"); setKey("");}} className="text-xs text-red-500 hover:underline">Reset Key</button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white" ref={scrollRef}>
+                        {messages.map((m, i) => (
+                            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-[85%] p-4 rounded-lg shadow-sm whitespace-pre-wrap ai-content ${m.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-slate-50 border border-slate-200 text-slate-800 rounded-bl-none'}`}>{m.text}</div>
+                            </div>
+                        ))}
+                        {loading && <div className="text-xs text-slate-400 p-2">Thinking...</div>}
+                    </div>
+                    <div className="p-4 bg-slate-50 border-t border-slate-200 flex gap-2">
+                        <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder="Ask a question..." className="flex-1 border border-slate-300 rounded-md px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none" />
+                        <button onClick={handleSend} disabled={loading} className="bg-blue-600 text-white px-6 py-2 rounded-md font-bold hover:bg-blue-700 disabled:opacity-50">Send</button>
+                    </div>
+                </div>
+            );
+        };
 
         const App = () => {
             const [view, setView] = useState('home'); 
@@ -540,7 +824,7 @@
                             {view === 'tools' && <ToolsPanel />}
                             {view === 'about' && <AboutPage />}
                             {view === 'feedback' && <FeedbackPage />}
-                            {view === 'tutor' && <div className="max-w-2xl mx-auto bg-white p-6 rounded border shadow-sm h-96 flex items-center justify-center text-slate-500">AI Tutor Chat Interface (Active in Full Mode)</div>}
+                            {view === 'tutor' && <AITutor />}
                         </main>
 
                         {/* RIGHT SIDEBAR (PERSISTENT) */}
