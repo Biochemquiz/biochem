@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioChemHub | Advanced Exam Prep</title>
+    
+    <!-- React & Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- PapaParse & Katex -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; color: #333; }
+        h1, h2, h3, .serif { font-family: 'Merriweather', serif; }
+        
+        /* Layout Grid: Left Sidebar | Main Content | Right Sidebar */
+        .layout-grid { display: grid; grid-template-columns: 260px 1fr 280px; min-height: calc(100vh - 64px); }
+        @media (max-width: 1280px) { .layout-grid { grid-template-columns: 240px 1fr; } .right-sidebar { display: none; } }
+        @media (max-width: 768px) { .layout-grid { grid-template-columns: 1fr; } .left-sidebar { display: none; } }
+
+        /* Sidebar Styles */
+        .sidebar { background: #fff; border-right: 1px solid #e5e7eb; height: 100%; overflow-y: auto; }
+        .right-sidebar { background: #fff; border-left: 1px solid #e5e7eb; padding: 20px; height: 100%; overflow-y: auto; }
+        
+        .sidebar-item { padding: 12px 20px; cursor: pointer; font-size: 0.9rem; color: #4b5563; border-left: 4px solid transparent; transition: all 0.2s; display: flex; align-items: center; gap: 10px; }
+        .sidebar-item:hover { background: #f3f4f6; color: #003366; }
+        .sidebar-item.active { background: #eff6ff; color: #003366; border-left-color: #003366; font-weight: 700; }
+        .sidebar-header { font-size: 0.75rem; font-weight: 800; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; padding: 20px 20px 10px; }
+
+        /* Submenu */
+        .submenu { background: #f9fafb; border-top: 1px solid #f3f4f6; border-bottom: 1px solid #f3f4f6; }
+        .submenu-item { padding: 8px 20px 8px 48px; font-size: 0.85rem; color: #6b7280; cursor: pointer; transition: color 0.2s; }
+        .submenu-item:hover { color: #2563eb; }
+        .submenu-item.active { color: #2563eb; font-weight: 600; }
+
+        /* Content Area */
+        .main-content { padding: 30px; overflow-y: auto; height: 100%; background-color: #f8f9fa; }
+        
+        /* Tool Styles */
+        .tool-card { background: white; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .tool-label { display: block; font-weight: 600; font-size: 0.85rem; color: #374151; margin-bottom: 6px; }
+        .tool-input { width: 100%; padding: 10px; border: 2px solid #cbd5e1; background: #f8fafc; border-radius: 6px; font-size: 0.95rem; color: #111827; }
+        .tool-input:focus { border-color: #2563eb; background: #fff; outline: none; }
+        .tool-btn { width: 100%; background: #003366; color: white; padding: 10px; border-radius: 6px; font-weight: 600; margin-top: 12px; transition: background 0.2s; }
+        .tool-btn:hover { background: #002244; }
+        .tool-result { margin-top: 15px; padding: 15px; background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; border-radius: 6px; font-family: monospace; font-weight: bold; text-align: center; }
+
+        /* Ad Slots */
+        .ad-box { background: #f3f4f6; border: 2px dashed #d1d5db; height: 250px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 0.75rem; margin-bottom: 20px; border-radius: 4px; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; }
+        .ad-banner { height: 90px; width: 100%; background: #f3f4f6; border: 2px dashed #d1d5db; display: flex; align-items: center; justify-content: center; color: #9ca3af; margin-bottom: 30px; font-weight: bold; text-transform: uppercase; font-size: 0.75rem; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <div id="root" class="h-full flex flex-col"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // ==========================================================================================
+        //  CONFIGURATION & SYLLABUS
+        // ==========================================================================================
+        const NEWS_SHEET_URL = "https://docs.google.com/spreadsheets/d/15xY_MXcTDMJnkwjdphi7w2KpC3kHDh0rO2kS23BXouU/pub?output=csv";
+        const apiKey = ""; // API Key
+
+        // Decentralized Syllabus: Each topic can have a unique Sheet URL
+        const SYLLABUS = [
+            {
+                title: "1. Enzymology", id: "enz", icon: "🧪",
+                defaultSheet: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQpYLsRx_A7fzPWH1MmVoOeMRuSurz10CVlXuJem3FXkhXYdqluPZn9JWpVY1N2nkbgF9Tq68s39fwQ/pub?output=csv",
+                topics: ["Enzyme Kinetics", "Inhibition", "Allosteric Reg", "Isoenzymes", "Catalysis Mechanisms"]
+            },
+            { title: "2. Molecular Biology", id: "mol", icon: "🧬", defaultSheet: "PLACEHOLDER_LINK_HERE", topics: ["DNA Structure", "Replication", "Transcription", "Translation", "Operons"] },
+            { title: "3. Carbohydrate Metab", id: "carb", icon: "🍞", defaultSheet: "PLACEHOLDER_LINK_HERE", topics: ["Glycolysis", "TCA Cycle", "ETC", "Gluconeogenesis", "Glycogen Metab"] },
+            { title: "4. Lipid Metabolism", id: "lip", icon: "🥑", defaultSheet: "PLACEHOLDER_LINK_HERE", topics: ["Beta Oxidation", "Fatty Acid Synthesis", "Ketogenesis", "Cholesterol"] },
+            { title: "5. Protein & Amino Acids", id: "prot", icon: "🥩", defaultSheet: "PLACEHOLDER_LINK_HERE", topics: ["Urea Cycle", "Transamination", "PKU Pathway", "Heme Synthesis"] },
+            { title: "6. Vitamins & Minerals", id: "vit", icon: "💊", defaultSheet: "PLACEHOLDER_LINK_HERE", topics: ["Water Soluble", "Fat Soluble", "Deficiencies", "Iron Metabolism"] },
+            { title: "7. Hormones & Endocrine", id: "horm", icon: "📡", defaultSheet: "PLACEHOLDER_LINK_HERE", topics: ["Insulin/Glucagon", "Steroid Hormones", "Signaling", "Second Messengers"] },
+            { title: "8. Clinical Biochem", id: "clin", icon: "🏥", defaultSheet: "PLACEHOLDER_LINK_HERE", topics: ["LFTs", "Renal Function", "Acid-Base Balance", "Diabetes Mellitus"] },
+            { title: "9. Techniques", id: "tech", icon: "🔬", defaultSheet: "PLACEHOLDER_LINK_HERE", topics: ["PCR", "Chromatography", "Electrophoresis", "ELISA"] },
+            { title: "10. Metabolic Integration", id: "integ", icon: "🔄", defaultSheet: "PLACEHOLDER_LINK_HERE", topics: ["Starvation", "Fed State", "Randle Cycle", "Cori Cycle"] },
+            { title: "11. Immunology", id: "imm", icon: "🛡️", defaultSheet: "PLACEHOLDER_LINK_HERE", topics: ["Antibodies", "Vaccines", "MHC I & II", "Inflammation"] },
+            { title: "12. Neurochemistry", id: "neuro", icon: "🧠", defaultSheet: "PLACEHOLDER_LINK_HERE", topics: ["Neurotransmitters", "Blood-Brain Barrier", "Parkinson's"] },
+            { title: "13. Diagnostics & Omics", id: "omics", icon: "💻", defaultSheet: "PLACEHOLDER_LINK_HERE", topics: ["Genomics", "Proteomics", "CRISPR", "Metabolomics"] },
+            { title: "14. Special Topics", id: "spec", icon: "✨", defaultSheet: "PLACEHOLDER_LINK_HERE", topics: ["Free Radicals", "Apoptosis", "Aging", "Detoxification"] }
+        ];
+
+        // --- GEMINI API ---
+        async function callGemini(prompt, systemInstruction = "") {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            try {
+                const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: systemInstruction }] } }) });
+                if (!response.ok) throw new Error(`HTTP error!`);
+                const data = await response.json();
+                return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
+            } catch (e) { return "AI Tutor is currently unavailable. Please try again later."; }
+        }
+
+        // ==========================================================================================
+        //  COMPONENTS
+        // ==========================================================================================
+
+        const Header = ({ setView }) => (
+            <header className="bg-[#003366] text-white h-16 flex items-center justify-between px-6 shadow-md z-50 relative shrink-0">
+                <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('home')}>
+                    <span className="text-2xl font-bold tracking-tight font-serif">BioChem<span className="text-blue-300">Hub</span></span>
+                </div>
+                <nav className="hidden md:flex gap-6 text-sm font-medium">
+                    <button onClick={() => setView('home')} className="hover:text-blue-200 transition">News Feed</button>
+                    <button onClick={() => setView('mcq')} className="hover:text-blue-200 transition">Exam Prep</button>
+                    <button onClick={() => setView('tools')} className="hover:text-blue-200 transition">Lab Tools</button>
+                    <button onClick={() => setView('tutor')} className="hover:text-blue-200 transition">AI Tutor</button>
+                    <button onClick={() => setView('about')} className="hover:text-blue-200 transition">About</button>
+                </nav>
+            </header>
+        );
+
+        const RightSidebar = () => (
+            <aside className="right-sidebar">
+                <div className="sidebar-header">Share</div>
+                <div className="flex gap-2 mb-6">
+                    <button className="bg-blue-600 text-white p-2 rounded hover:bg-blue-700 font-bold text-xs flex-1">Facebook</button>
+                    <button className="bg-sky-500 text-white p-2 rounded hover:bg-sky-600 font-bold text-xs flex-1">Twitter</button>
+                    <button className="bg-green-500 text-white p-2 rounded hover:bg-green-600 font-bold text-xs flex-1">WhatsApp</button>
+                </div>
+
+                <div className="sidebar-header">Sponsored</div>
+                <div className="ad-box">AdSense 300x250</div>
+                <div className="ad-box">AdSense 300x250</div>
+
+                <div className="sidebar-header">Resources</div>
+                <ul className="text-sm space-y-3 text-slate-600 px-2">
+                    <li><a href="#" className="hover:text-blue-600 flex items-center gap-2">📚 Lehninger Principles</a></li>
+                    <li><a href="#" className="hover:text-blue-600 flex items-center gap-2">📘 Harper's Illustrated</a></li>
+                    <li><a href="#" className="hover:text-blue-600 flex items-center gap-2">📥 Download MCQs ($5)</a></li>
+                </ul>
+            </aside>
+        );
+
+        const LeftSidebar = ({ activeSectionId, onSectionSelect, activeTopic, onTopicSelect }) => (
+            <aside className="sidebar left-sidebar">
+                <div className="sidebar-header">Syllabus Modules</div>
+                <div>
+                    {SYLLABUS.map((section) => (
+                        <div key={section.id}>
+                            <div 
+                                onClick={() => onSectionSelect(section)}
+                                className={`sidebar-item ${activeSectionId === section.id ? 'active' : ''}`}
+                            >
+                                <span>{section.icon}</span>
+                                <span>{section.title}</span>
+                            </div>
+                            {activeSectionId === section.id && (
+                                <div className="submenu">
+                                    <div 
+                                        onClick={() => onTopicSelect("Top 100 MCQ")}
+                                        className={`submenu-item ${activeTopic === "Top 100 MCQ" ? 'active' : ''}`}
+                                    >
+                                        ★ Top 100 MCQ
+                                    </div>
+                                    {section.topics.map(t => (
+                                        <div 
+                                            key={t}
+                                            onClick={() => onTopicSelect(t)}
+                                            className={`submenu-item ${activeTopic === t ? 'active' : ''}`}
+                                        >
+                                            {t}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </aside>
+        );
+
+        const NewsFeed = () => {
+            const [posts, setPosts] = useState([]);
+            useEffect(() => {
+                Papa.parse(NEWS_SHEET_URL, { download: true, header: true, complete: (res) => { if(res.data) setPosts(res.data.filter(r => r.Headline)); } });
+            }, []);
+
+            return (
+                <div className="max-w-3xl mx-auto">
+                    <h1 className="text-3xl font-bold serif text-slate-800 mb-6 border-b pb-4">Recent Discoveries</h1>
+                    <div className="ad-banner">Google Ad (Leaderboard)</div>
+                    {posts.length === 0 ? <p className="text-slate-500 italic">Loading updates from Google Sheets...</p> : 
+                        posts.map((p, i) => (
+                            <div key={i} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6 hover:shadow-md transition-shadow">
+                                <div className="flex justify-between items-start mb-2">
+                                    <span className="text-xs font-bold text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded">{p.Source}</span>
+                                    <span className="text-xs text-slate-400">{p.Date}</span>
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-900 mb-2 hover:text-blue-700"><a href={p.Link} target="_blank">{p.Headline}</a></h3>
+                                <p className="text-slate-600 leading-relaxed">{p.Summary}</p>
+                            </div>
+                        ))
+                    }
+                </div>
+            );
+        };
+
+        const ToolsPanel = () => {
+            const [cat, setCat] = useState('core');
+            const [inputs, setInputs] = useState({});
+            const [res, setRes] = useState(null);
+
+            const handleInput = (key, val) => setInputs(prev => ({...prev, [key]: val}));
+
+            const handleCalc = (type) => {
+                try {
+                    let result = "";
+                    if(type === 'core_sci') {
+                        const base = parseFloat(inputs.base); const exp = parseFloat(inputs.exp);
+                        result = `${base} × 10^${exp} = ${(base * Math.pow(10, exp)).toExponential(3)}`;
+                    }
+                    else if(type === 'dil') {
+                        const c1 = parseFloat(inputs.c1); const v1 = parseFloat(inputs.v1); const c2 = parseFloat(inputs.c2);
+                        if(c2 === 0) throw new Error("C2 cannot be zero");
+                        result = `Final Volume (V2) = ${((c1 * v1) / c2).toFixed(2)} units`;
+                    }
+                    else if(type === 'ph') {
+                        const h = parseFloat(inputs.h);
+                        if(h <= 0) throw new Error("[H+] must be > 0");
+                        result = `pH = ${(-Math.log10(h)).toFixed(2)}`;
+                    }
+                    else if(type === 'beer') {
+                        const a = parseFloat(inputs.a); const e = parseFloat(inputs.e); const l = parseFloat(inputs.l || 1);
+                        if(e === 0 || l === 0) throw new Error("Coeff/Path cannot be zero");
+                        result = `Concentration = ${(a / (e * l)).toFixed(6)} M`;
+                    }
+                    else if(type === 'enz_rate') {
+                        const da = parseFloat(inputs.da); const dt = parseFloat(inputs.dt);
+                        if(dt === 0) throw new Error("Time cannot be zero");
+                        result = `Rate = ${(da/dt).toFixed(4)} Abs/min`;
+                    }
+                    else if(type === 'stat') {
+                        const arr = inputs.data.split(',').map(n => parseFloat(n.trim())).filter(n => !isNaN(n));
+                        if(arr.length === 0) throw new Error("No valid numbers");
+                        const mean = arr.reduce((a,b)=>a+b)/arr.length;
+                        const sd = Math.sqrt(arr.map(x => Math.pow(x-mean,2)).reduce((a,b)=>a+b)/arr.length);
+                        result = `Mean: ${mean.toFixed(2)} | SD: ${sd.toFixed(2)}`;
+                    }
+                    else if(type === 'mol') {
+                        const mass = parseFloat(inputs.mass); const mw = parseFloat(inputs.mw);
+                        if(mw === 0) throw new Error("MW cannot be zero");
+                        result = `Moles = ${(mass/mw).toFixed(4)} mol`;
+                    }
+                    else if(type === 'unit') {
+                        const v = parseFloat(inputs.val);
+                        if(inputs.utype === 'uM_mM') result = `${v/1000} mM`;
+                        else if(inputs.utype === 'mM_uM') result = `${v*1000} µM`;
+                        else result = "Select valid conversion";
+                    }
+                    setRes(result);
+                } catch(e) { setRes("Error: " + e.message); }
+            };
+
+            const cats = [
+                {id:'core', l:'1. Core Math'}, {id:'dil', l:'2. Dilution'}, {id:'ph', l:'3. pH/Buffer'},
+                {id:'prot', l:'4. Protein Quant'}, {id:'enz', l:'5. Enzyme Kinetics'}, {id:'stat', l:'6. Statistics'},
+                {id:'mol', l:'7. Molecular Prop'}, {id:'calib', l:'8. Calibration'}, {id:'unit', l:'9. Unit Conv'},
+                {id:'check', l:'10. Sanity Checks'}
+            ];
+
+            return (
+                <div className="max-w-4xl mx-auto">
+                    <div className="ad-banner">Google Ad (Top Banner)</div>
+                    <h2 className="text-2xl font-bold serif text-slate-800 mb-6">Lab Calculators</h2>
+                    
+                    <div className="flex flex-col md:flex-row gap-6">
+                        <div className="w-full md:w-64 space-y-1">
+                            {cats.map(c => (
+                                <button key={c.id} onClick={()=>{setCat(c.id); setRes(null); setInputs({});}} className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all ${cat===c.id ? 'bg-[#003366] text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100 border border-transparent'}`}>
+                                    {c.l}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="flex-1">
+                            {cat === 'core' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">Scientific Notation</h3><div className="space-y-4">
+                                <div><label className="tool-label">Base Number</label><input type="number" className="tool-input" placeholder="e.g. 6.02" onChange={e=>handleInput('base', e.target.value)}/></div>
+                                <div><label className="tool-label">Exponent</label><input type="number" className="tool-input" placeholder="e.g. 23" onChange={e=>handleInput('exp', e.target.value)}/></div>
+                                <button className="tool-btn" onClick={()=>handleCalc('core_sci')}>Calculate</button>
+                            </div></div>}
+
+                            {cat === 'dil' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">Dilution (C1V1 = C2V2)</h3><div className="space-y-4">
+                                <div><label className="tool-label">Stock Concentration (C1)</label><input type="number" className="tool-input" onChange={e=>handleInput('c1', e.target.value)}/></div>
+                                <div><label className="tool-label">Volume Used (V1)</label><input type="number" className="tool-input" onChange={e=>handleInput('v1', e.target.value)}/></div>
+                                <div><label className="tool-label">Target Concentration (C2)</label><input type="number" className="tool-input" onChange={e=>handleInput('c2', e.target.value)}/></div>
+                                <button className="tool-btn" onClick={()=>handleCalc('dil')}>Calculate Final Vol (V2)</button>
+                            </div></div>}
+
+                            {cat === 'ph' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">pH Calculator</h3><div className="space-y-4">
+                                <div><label className="tool-label">[H+] Concentration (M)</label><input type="number" step="any" className="tool-input" onChange={e=>handleInput('h', e.target.value)}/></div>
+                                <button className="tool-btn" onClick={()=>handleCalc('ph')}>Calculate pH</button>
+                            </div></div>}
+
+                            {cat === 'prot' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">Beer-Lambert Law (A = εcl)</h3><div className="space-y-4">
+                                <div><label className="tool-label">Absorbance (A)</label><input type="number" className="tool-input" onChange={e=>handleInput('a', e.target.value)}/></div>
+                                <div><label className="tool-label">Extinction Coeff (ε)</label><input type="number" className="tool-input" onChange={e=>handleInput('e', e.target.value)}/></div>
+                                <div><label className="tool-label">Path Length (l) cm</label><input type="number" className="tool-input" defaultValue="1" onChange={e=>handleInput('l', e.target.value)}/></div>
+                                <button className="tool-btn" onClick={()=>handleCalc('beer')}>Calculate Concentration</button>
+                            </div></div>}
+
+                            {cat === 'enz' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">Simple Reaction Rate</h3><div className="space-y-4">
+                                <div><label className="tool-label">Change in Absorbance (ΔA)</label><input type="number" className="tool-input" onChange={e=>handleInput('da', e.target.value)}/></div>
+                                <div><label className="tool-label">Time Interval (Δt) min</label><input type="number" className="tool-input" onChange={e=>handleInput('dt', e.target.value)}/></div>
+                                <button className="tool-btn" onClick={()=>handleCalc('enz_rate')}>Calculate Rate</button>
+                            </div></div>}
+
+                            {cat === 'stat' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">Basic Statistics</h3><div className="space-y-4">
+                                <div><label className="tool-label">Data Set (comma separated)</label><input type="text" className="tool-input" placeholder="1.2, 1.5, 1.3" onChange={e=>handleInput('data', e.target.value)}/></div>
+                                <button className="tool-btn" onClick={()=>handleCalc('stat')}>Calculate Mean & SD</button>
+                            </div></div>}
+
+                            {cat === 'mol' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">Mass to Moles</h3><div className="space-y-4">
+                                <div><label className="tool-label">Mass (g)</label><input type="number" className="tool-input" onChange={e=>handleInput('mass', e.target.value)}/></div>
+                                <div><label className="tool-label">Molecular Weight (g/mol)</label><input type="number" className="tool-input" onChange={e=>handleInput('mw', e.target.value)}/></div>
+                                <button className="tool-btn" onClick={()=>handleCalc('mol')}>Calculate Moles</button>
+                            </div></div>}
+
+                            {cat === 'unit' && <div className="tool-card"><h3 className="tool-title text-lg font-bold mb-4">Unit Converter</h3><div className="space-y-4">
+                                <div><label className="tool-label">Value</label><input type="number" className="tool-input" onChange={e=>handleInput('val', e.target.value)}/></div>
+                                <div><label className="tool-label">Conversion</label>
+                                    <select className="tool-input" onChange={e=>handleInput('utype', e.target.value)}>
+                                        <option value="uM_mM">µM -> mM</option>
+                                        <option value="mM_uM">mM -> µM</option>
+                                    </select>
+                                </div>
+                                <button className="tool-btn" onClick={()=>handleCalc('unit')}>Convert</button>
+                            </div></div>}
+
+                            {/* Fallback/Text Sections */}
+                            {['calib', 'check'].includes(cat) && <div className="bg-blue-50 p-6 rounded text-slate-700 border border-blue-100">
+                                <h3 className="font-bold mb-2">Information</h3>
+                                <p>Standard Curve/Calibration logic typically requires plotting software. Use Excel/GraphPad for regression analysis.</p>
+                            </div>}
+
+                            {res && <div className="tool-result">{res}</div>}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const MCQLayout = ({ activeSection, selectedTopic }) => {
+            const [questions, setQuestions] = useState([]);
+            const [page, setPage] = useState(1);
+            const [loading, setLoading] = useState(false);
+            
+            useEffect(() => {
+                if(!activeSection) return;
+                
+                // Guard clause for placeholders
+                if (!activeSection.defaultSheet || activeSection.defaultSheet.includes("PLACEHOLDER")) {
+                    setQuestions([]);
+                    setLoading(false);
+                    return;
+                }
+
+                setLoading(true);
+                Papa.parse(activeSection.defaultSheet, {
+                    download: true, header: true,
+                    complete: (res) => {
+                        setLoading(false);
+                        if(res.data) setQuestions(res.data.filter(r => r.Question));
+                    },
+                    error: (err) => {
+                        console.log("Error loading sheet:", err);
+                        setLoading(false);
+                        setQuestions([]);
+                    }
+                });
+                setPage(1); // Reset page on section change
+            }, [activeSection]);
+
+            const displayedQs = useMemo(() => {
+                let filtered = questions;
+                if(selectedTopic !== "Top 100 MCQ") {
+                    // Match topic string loosely
+                    filtered = questions.filter(q => q.Topic && q.Topic.toLowerCase().includes(selectedTopic.toLowerCase()));
+                }
+                // Pagination logic (15 per page)
+                return filtered.slice((page-1)*15, page*15);
+            }, [questions, selectedTopic, page]);
+
+            const totalQs = selectedTopic === "Top 100 MCQ" ? questions.length : questions.filter(q => q.Topic && q.Topic.toLowerCase().includes(selectedTopic.toLowerCase())).length;
+
+            return (
+                <div className="max-w-4xl mx-auto">
+                    <div className="ad-banner">Google Ad (Top Quiz)</div>
+                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6 flex justify-between items-center">
+                        <div>
+                            <span className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1 block">Module: {activeSection.title}</span>
+                            <h2 className="text-2xl font-bold serif text-slate-800">{selectedTopic}</h2>
+                        </div>
+                        <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded text-sm font-mono border border-slate-200">
+                            {totalQs} Qs
+                        </span>
+                    </div>
+
+                    <div className="space-y-6">
+                        {loading && <div className="text-center p-10 text-slate-500">Loading Questions...</div>}
+                        {!loading && displayedQs.length === 0 && <div className="text-center p-10 text-slate-500 bg-white rounded border border-dashed">No questions found for this topic.</div>}
+                        {!loading && displayedQs.map((q, idx) => (
+                            <MCQCard key={idx} q={q} idx={(page-1)*15 + idx + 1} />
+                        ))}
+                    </div>
+
+                    {!loading && totalQs > 15 && (
+                        <div className="flex justify-center gap-4 mt-8 pt-6 border-t border-gray-200">
+                            <button disabled={page===1} onClick={()=>setPage(p=>p-1)} className="px-4 py-2 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 text-sm font-bold text-slate-600">Previous</button>
+                            <span className="self-center font-bold text-slate-600 text-sm">Page {page}</span>
+                            <button disabled={(page*15) >= totalQs} onClick={()=>setPage(p=>p+1)} className="px-4 py-2 bg-[#003366] text-white rounded hover:bg-[#002244] disabled:opacity-50 text-sm font-bold">Next</button>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const MCQCard = ({ q, idx }) => {
+            const [selected, setSelected] = useState(null);
+            const [showExpl, setShowExpl] = useState(false);
+            const [aiExpl, setAiExpl] = useState(null);
+
+            const askAI = async () => {
+                setAiExpl("Thinking...");
+                const ans = await callGemini(`Explain this biochemistry question: ${q.Question}. Answer is ${q.CorrectAnswer}.`, "Be concise.");
+                setAiExpl(ans);
+            };
+
+            return (
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                    <div className="flex gap-3 mb-4">
+                        <span className="font-bold text-blue-600">#{idx}</span>
+                        <p className="font-medium text-lg text-slate-800">{q.Question}</p>
+                    </div>
+                    <div className="space-y-2 pl-8">
+                        {[q.Option1, q.Option2, q.Option3, q.Option4].filter(Boolean).map((opt, i) => (
+                            <button 
+                                key={i} 
+                                onClick={() => { setSelected(opt); setShowExpl(true); }}
+                                disabled={!!selected}
+                                className={`w-full text-left p-3 rounded border text-sm transition-colors ${
+                                    selected ? (opt === q.CorrectAnswer ? 'bg-green-50 border-green-500 text-green-800' : (selected === opt ? 'bg-red-50 border-red-500' : 'opacity-60')) : 'hover:bg-slate-50'
+                                }`}
+                            >
+                                {opt}
+                            </button>
+                        ))}
+                    </div>
+                    {showExpl && (
+                        <div className="mt-4 ml-8 p-4 bg-blue-50 text-blue-900 text-sm rounded border border-blue-100">
+                            <strong>Explanation:</strong> {q.Explanation}
+                            <div className="mt-3 pt-3 border-t border-blue-200">
+                                <button onClick={askAI} className="text-xs font-bold uppercase text-blue-600 hover:underline flex items-center gap-1">✨ Ask AI Tutor</button>
+                                {aiExpl && <div className="mt-2 text-slate-700 italic bg-white p-3 rounded">{aiExpl}</div>}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const AboutPage = () => (
+            <div className="bg-white p-8 rounded shadow-sm border border-gray-200 max-w-3xl mx-auto">
+                <h2 className="text-3xl font-bold serif text-[#003366] mb-6">About Us</h2>
+                <div className="prose text-slate-600 leading-relaxed">
+                    <p className="mb-4">Welcome to <strong>BioChemHub</strong>, a specialized platform for medical and agricultural students preparing for competitive exams like CSIR-NET, GATE, and NEET-PG.</p>
+                    <p className="mb-4">Our goal is to provide high-quality, free resources including:</p>
+                    <ul className="list-disc pl-5 mb-4 space-y-2">
+                        <li>High-Yield MCQs curated by experts</li>
+                        <li>Real-time research updates via decentralized feeds</li>
+                        <li>Advanced laboratory calculators for practical work</li>
+                        <li>AI-assisted learning tools</li>
+                    </ul>
+                    <p>We believe in decentralized education where content is modular, easy to update, and accessible to everyone.</p>
+                </div>
+            </div>
+        );
+
+        const FeedbackPage = () => (
+            <div className="bg-white p-8 rounded shadow-sm border border-gray-200 max-w-2xl mx-auto">
+                <h2 className="text-3xl font-bold serif text-[#003366] mb-4">Feedback</h2>
+                <p className="text-slate-500 mb-6">Found a bug or have a suggestion? Let us know.</p>
+                <input className="w-full border p-3 rounded mb-4 tool-input" placeholder="Your Email (Optional)" />
+                <textarea className="w-full border p-3 rounded h-32 mb-4 tool-input" placeholder="Tell us what you think..."></textarea>
+                <button className="bg-[#003366] text-white px-6 py-2 rounded font-bold hover:bg-[#002244]">Submit Feedback</button>
+            </div>
+        );
+
+        const App = () => {
+            const [view, setView] = useState('home'); 
+            const [activeSection, setActiveSection] = useState(SYLLABUS[0]);
+            const [activeTopic, setActiveTopic] = useState("Top 100 MCQ");
+
+            // Handle switching sections from Left Sidebar
+            const handleSectionSelect = (section) => {
+                setActiveSection(section);
+                setActiveTopic("Top 100 MCQ"); // Reset topic when switching modules
+                setView('mcq');
+            };
+
+            // Handle switching specific topic within a section
+            const handleTopicSelect = (topic) => {
+                setActiveTopic(topic);
+                setView('mcq');
+            };
+
+            return (
+                <div className="flex flex-col h-full bg-[#f8f9fa] text-slate-800 font-sans">
+                    <Header setView={setView} />
+                    
+                    <div className="layout-grid flex-1 overflow-hidden">
+                        {/* LEFT SIDEBAR (PERSISTENT) */}
+                        <LeftSidebar 
+                            activeSectionId={activeSection.id} 
+                            onSectionSelect={handleSectionSelect}
+                            activeTopic={activeTopic}
+                            onTopicSelect={handleTopicSelect}
+                        />
+
+                        {/* MAIN CONTENT STAGE */}
+                        <main className="main-content">
+                            {view === 'home' && <NewsFeed />}
+                            {view === 'mcq' && <MCQLayout activeSection={activeSection} selectedTopic={activeTopic} />}
+                            {view === 'tools' && <ToolsPanel />}
+                            {view === 'about' && <AboutPage />}
+                            {view === 'feedback' && <FeedbackPage />}
+                            {view === 'tutor' && <div className="max-w-2xl mx-auto bg-white p-6 rounded border shadow-sm h-96 flex items-center justify-center text-slate-500">AI Tutor Chat Interface (Active in Full Mode)</div>}
+                        </main>
+
+                        {/* RIGHT SIDEBAR (PERSISTENT) */}
+                        <RightSidebar />
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
